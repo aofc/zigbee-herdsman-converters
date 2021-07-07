@@ -1,10 +1,13 @@
 'use strict';
 
-const devices = require('./devices');
+const configureKey = require('./lib/configureKey');
 const exposes = require('./lib/exposes');
 const toZigbee = require('./converters/toZigbee');
 const fromZigbee = require('./converters/fromZigbee');
 const assert = require('assert');
+const tz = require('./converters/toZigbee');
+const fs = require('fs');
+const path = require('path');
 
 // key: zigbeeModel, value: array of definitions (most of the times 1)
 const lookup = new Map();
@@ -23,7 +26,7 @@ function addToLookup(zigbeeModel, definition) {
     }
 
     if (!lookup.get(zigbeeModel).includes(definition)) {
-        lookup.get(zigbeeModel).push(definition);
+        lookup.get(zigbeeModel).splice(0, 0, definition);
     }
 }
 
@@ -56,8 +59,32 @@ function validateDefinition(definition) {
 }
 
 function addDefinition(definition) {
+    const {extend, ...definitionWithoutExtend} = definition;
+    if (extend) {
+        if (extend.hasOwnProperty('configure') && definition.hasOwnProperty('configure')) {
+            console.log(`'${definition.model}' has configure in extend and device, this is not allowed`);
+        }
+
+        definition = {
+            ...extend,
+            ...definitionWithoutExtend,
+            meta: extend.meta || definitionWithoutExtend.meta ? {
+                ...extend.meta,
+                ...definitionWithoutExtend.meta,
+            } : undefined,
+        };
+    }
+
+    if (definition.toZigbee.length > 0) {
+        definition.toZigbee.push(tz.scene_store, tz.scene_recall, tz.scene_add, tz.scene_remove, tz.scene_remove_all, tz.read, tz.write);
+    }
+
+    if (definition.exposes) {
+        definition.exposes = definition.exposes.concat([exposes.presets.linkquality()]);
+    }
+
     validateDefinition(definition);
-    definitions.push(definition);
+    definitions.splice(0, 0, definition);
 
     if (definition.hasOwnProperty('fingerprint')) {
         for (const fingerprint of definition.fingerprint) {
@@ -72,8 +99,12 @@ function addDefinition(definition) {
     }
 }
 
-for (const definition of devices) {
-    addDefinition(definition);
+// Load all definitions from devices folder
+const devicesPath = path.join(__dirname, 'devices');
+for (const file of fs.readdirSync(devicesPath)) {
+    for (const definition of require(path.join(devicesPath, file))) {
+        addDefinition(definition);
+    }
 }
 
 function findByZigbeeModel(zigbeeModel) {
@@ -97,11 +128,8 @@ function findByDevice(device) {
     } else if (candidates.length === 1 && candidates[0].hasOwnProperty('zigbeeModel')) {
         return candidates[0];
     } else {
-        // Multiple candidates possible, to use external converters in priority, reverse the order of candidates before searching.
-        const reversedCandidates = candidates.reverse();
-
         // First try to match based on fingerprint, return the first matching one.
-        for (const candidate of reversedCandidates) {
+        for (const candidate of candidates) {
             if (candidate.hasOwnProperty('fingerprint')) {
                 for (const fingerprint of candidate.fingerprint) {
                     if (fingerprintMatch(fingerprint, device)) {
@@ -112,7 +140,7 @@ function findByDevice(device) {
         }
 
         // Match based on fingerprint failed, return first matching definition based on zigbeeModel
-        for (const candidate of reversedCandidates) {
+        for (const candidate of candidates) {
             if (candidate.hasOwnProperty('zigbeeModel') && candidate.zigbeeModel.includes(device.modelID)) {
                 return candidate;
             }
@@ -155,6 +183,7 @@ function fingerprintMatch(fingerprint, device) {
 }
 
 module.exports = {
+    getConfigureKey: configureKey.getConfigureKey,
     devices: definitions,
     exposes,
     definitions,
