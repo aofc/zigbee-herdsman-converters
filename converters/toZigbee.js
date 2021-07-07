@@ -847,8 +847,10 @@ const converters = {
             const payload = {colortemp: value, transtime: utils.getTransition(entity, key, meta).time};
             await entity.command('lightingColorCtrl', 'moveToColorTemp', payload, utils.getOptions(meta.mapped, entity));
             return {
-                state: libColor.syncColorState({'color_mode': constants.colorMode[2], 'color_temp': value}, meta.state, meta.options),
-                readAfterWriteTime: payload.transtime * 100,
+                
+                //RS: state: libColor.syncColorState({'color_mode': constants.colorMode[2], 'color_temp': value}, meta.state, meta.options),
+                // readAfterWriteTime: payload.transtime * 100,
+                state: { color_temp: value, color_mode: constants.colorMode[2] }, readAfterWriteTime: payload.transtime * 100,
             };
         },
         convertGet: async (entity, key, meta) => {
@@ -893,7 +895,7 @@ const converters = {
 
             const zclData = {transtime: utils.getTransition(entity, key, meta).time};
 
-            if (newColor.isRGB() || newColor.isXY()) {
+            if (newColor.isRGB()) {
                 // Convert RGB to XY color mode because Zigbee doesn't support RGB (only x/y and hue/saturation)
                 const xy = newColor.isRGB() ? newColor.rgb.gammaCorrected().toXY().rounded(4) : newColor.xy;
 
@@ -909,6 +911,24 @@ const converters = {
                 newState.color_mode = constants.colorMode[1];
                 newState.color = xy.toObject();
                 newState.color.hex = value;
+                zclData.colorx = utils.mapNumberRange(xy.x, 0, 1, 0, 65535);
+                zclData.colory = utils.mapNumberRange(xy.y, 0, 1, 0, 65535);
+                command = 'moveToColor';
+            } else if (newColor.isXY()) {
+                // Convert RGB to XY color mode because Zigbee doesn't support RGB (only x/y and hue/saturation)
+                const xy = newColor.isRGB() ? newColor.rgb.gammaCorrected().toXY().rounded(4) : newColor.xy;
+
+                // Some bulbs e.g. RB 185 C don't turn to red (they don't respond at all) when x: 0.701 and y: 0.299
+                // is send. These values are e.g. send by Home Assistant when clicking red in the color wheel.
+                // If we slighlty modify these values the bulb will respond.
+                // https://github.com/home-assistant/home-assistant/issues/31094
+                if (utils.getMetaValue(entity, meta.mapped, 'applyRedFix', 'allEqual', false) && xy.x == 0.701 && xy.y === 0.299) {
+                    xy.x = 0.7006;
+                    xy.y = 0.2993;
+                }
+
+                newState.color_mode = constants.colorMode[1];
+                newState.color = xy.toObject();
                 zclData.colorx = utils.mapNumberRange(xy.x, 0, 1, 0, 65535);
                 zclData.colory = utils.mapNumberRange(xy.y, 0, 1, 0, 65535);
                 command = 'moveToColor';
