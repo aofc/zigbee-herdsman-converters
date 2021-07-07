@@ -908,6 +908,7 @@ const converters = {
 
                 newState.color_mode = constants.colorMode[1];
                 newState.color = xy.toObject();
+                newState.color.hex = value;
                 zclData.colorx = utils.mapNumberRange(xy.x, 0, 1, 0, 65535);
                 zclData.colory = utils.mapNumberRange(xy.y, 0, 1, 0, 65535);
                 command = 'moveToColor';
