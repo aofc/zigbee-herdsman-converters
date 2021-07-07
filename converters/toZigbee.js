@@ -1325,7 +1325,7 @@ const converters = {
             };
 
             return {state: {power_outage_memory: value}};
-        },
+        }
     },
     xiaomi_power: {
         key: ['power'],
