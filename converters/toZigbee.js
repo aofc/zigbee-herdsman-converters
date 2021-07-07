@@ -1322,7 +1322,7 @@ const converters = {
                     await converters.on_off.convertSet(entity, key, 'ON', meta);
                     await utils.sleep(1000);
                 }
-            }
+            };
 
             return {state: {power_outage_memory: value}};
         },
